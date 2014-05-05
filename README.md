@@ -17,6 +17,13 @@ Those values are downloaded via xmlHttpRequest and the resulting Uint8Array is u
 
 All this is performed using JavaScript, with three.js to handle WebGL.
 
+Installation
+------------
+
+Just deploy the code into a folder of a server running PHP and open process.html. Check the console for the results.
+
+You'll need a computer with a GPU, of course.
+
 **You need to download the file pi-billion.txt from the soundcloud article**
 
 Results
