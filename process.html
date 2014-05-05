@@ -1,0 +1,287 @@
+<style>
+*{ box-sizing: border-box; margin: 0; padding: 0 ;}
+</style>
+<script src="three.min.js"></script>
+<script id="vertexShader" type="x-vertex-shader">
+varying vec2 vUv;
+
+void main() {
+
+	vUv = uv;
+	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+}
+</script>
+<script id="fragmentShader" type="x-fragment-shader">
+varying vec2 vUv;
+uniform sampler2D tInput;
+uniform float size;
+
+uniform float value[ 84 ];
+float xi = 1. / size;
+float base = 48. / 255.;
+
+const int t = 21;
+
+vec4 compare() {
+
+	vec4 n, m, r;
+	float s;
+	vec2 v;
+
+	// all values are normalized (0-1)
+
+	s = 0.;
+	for( int i = 0; i < t; i++ ) {
+		
+		v = vUv + vec2( float( i ) * xi, 0. );
+		if( v.x > 1. ) { v.x -= 1.; v.y += xi; }
+
+		n = texture2D( tInput, v );
+		n -= base;
+		n *= 255. / 9.;
+		
+		m = vec4( value[ i * 4 ], value[ i * 4 + 1 ], value[ i * 4 + 2 ], value[ i * 4 + 3 ] );
+		m /= 9.;
+
+		n -= m;
+		s += length( n );
+		
+	}
+	r.x = s;
+
+	s = 0.;
+	for( int i = 0; i < t; i++ ) {
+		
+		v = vUv + vec2( float( i + 1 ) * xi, 0. );
+		if( v.x > 1. ) { v.x -= 1.; v.y += xi; }
+		
+		n = texture2D( tInput, v );
+		n -= base;
+		n *= 255. / 9.;
+		
+		m = vec4( value[ i * 4 ], value[ i * 4 + 1 ], value[ i * 4 + 2 ], value[ i * 4 + 3 ] );
+		m /= 9.;
+
+		n -= m;
+		s += length( n );
+		
+	}
+	r.y = s;
+
+	s = 0.;
+	for( int i = 0; i < t; i++ ) {
+		
+		v = vUv + vec2( float( i + 2 ) * xi, 0. );
+		if( v.x > 1. ) { v.x -= 1.; v.y += xi; }
+		
+		n = texture2D( tInput, v );
+		n -= base;
+		n *= 255. / 9.;
+		
+		m = vec4( value[ i * 4 ], value[ i * 4 + 1 ], value[ i * 4 + 2 ], value[ i * 4 + 3 ] );
+		m /= 9.;
+
+		n -= m;
+		s += length( n );
+		
+	}
+	r.z = s;
+
+	s = 0.;
+	for( int i = 0; i < t; i++ ) {
+		
+		v = vUv + vec2( float( i + 3 ) * xi, 0. );
+		if( v.x > 1. ) { v.x -= 1.; v.y += xi; }
+		
+		n = texture2D( tInput, v );
+		n -= base;
+		n *= 255. / 9.;
+		
+		m = vec4( value[ i * 4 ], value[ i * 4 + 1 ], value[ i * 4 + 2 ], value[ i * 4 + 3 ] );
+		m /= 9.;
+
+		n -= m;
+		s += length( n );
+		
+	}
+	r.w = s;
+
+	return r;
+
+}
+
+void main() {
+
+	vec4 s = compare();
+
+	// maximum distance is if all is wrong: 84 * 1
+
+	float tt = float( t );
+	s = s * 1. / ( tt * 4. );
+
+	gl_FragColor = s;
+
+}
+</script>
+<script>
+
+var offset = 0;
+var s = 2048;
+var sequenceLength = 84;
+
+// total length is 166.938.848 : 166938848
+// 41734712 groups of 4 numbers
+// 1024 * 1024 * 39 = 40894464  ----> 840248
+
+var length = 166938848;
+var total = Math.ceil( length / ( s * s * 4 ) );
+
+var results = [];
+
+function fetchBuffer() {
+
+	if( offset >= length ) {
+		results.sort( sortResults );
+		console.log( 'finished!' );
+		//console.log( results );
+		for( var j = 0, m = Math.min( 10, results.length ); j < m; j++ ) { console.log( j, results[ j ].offset, results[ j ].string, results[ j ].distance ) } 
+		console.timeEnd( 'process' );
+		return;
+	}
+
+	console.log( 'Fetching ' + ( s * s * 4 ) + ' from ' + offset );
+	var request = new XMLHttpRequest();
+	request.open( 'GET', 'split.php?s=' + s + '&o=' + offset , true );
+	request.responseType = 'arraybuffer';
+
+	request.onload = function() {
+		var a = new Uint8Array( this.response );
+		run( a );
+	}
+
+	request.send();
+
+}
+
+function sortResults( a, b ) {
+	return a.distance - b.distance;
+}
+
+function getImageData(image) {
+	
+	var canvas = document.createElement('canvas');
+	canvas.width = image.width;
+	canvas.height = image.height;
+
+	var context = canvas.getContext('2d');
+	context.drawImage(image, 0, 0);
+
+	return context.getImageData(0, 0, image.width, image.height);
+
+}
+
+function run( a ) {
+
+	shader.uniforms.tInput.value = new THREE.DataTexture( a, s, s, THREE.RGBAFormat, THREE.UnsignedByteType );
+	shader.uniforms.tInput.value.needsUpdate = true;
+	renderer.render( scene, camera );
+
+	var b = getImageData( renderer.domElement );
+
+	for( var j = 0; j < s * s * 4; j++ ) {
+		var d = b.data[ j ];
+
+		if( d < 44 ) {
+
+			var str = [];
+			var dif = [];
+			var distance = 0;
+			for( var i = j; i < j + sequenceLength; i++ ) {
+				str.push( parseInt( a[ i ], 10 ) - 48 );
+				dist = Math.abs( ( parseInt( a[ i ], 10 ) - 48 ) - parseInt( shader.uniforms.value.value[ i - j ], 10 ) );
+				dif.push( dist );
+				distance += dist;
+			}
+
+			results.push( { 
+				offset: offset + j, 
+				d: d,
+				string: str.join(''),
+				dif: dif.join(''),
+				distance: distance
+			} );
+		}
+	}
+
+	console.log( 'Done. ' + ( results.length ).toString() + ' found.' );
+
+	offset += a.length - sequenceLength;
+	setTimeout( fetchBuffer, 1 )
+
+}
+
+window.addEventListener( 'load', init );
+
+var renderer, scene, camera, shader, quad, texture;
+
+function init() {
+
+	var gl = null;
+	try{
+		var canvas = document.createElement( 'canvas' );
+	    gl = canvas.getContext('experimental-webgl');
+	    if(gl == null){
+	        gl = canvas.getContext('webgl');
+	    }
+	}
+	catch(error){}
+
+	if( !gl ) return;
+
+	s = gl.getParameter(gl.MAX_TEXTURE_SIZE) / 2;
+	console.log( 'MAX_TEXTURE_SIZE ' + s );
+	
+	renderer = new THREE.WebGLRenderer( { antialias: false, alpha: true });
+	scene = new THREE.Scene();
+	camera = new THREE.OrthographicCamera( 1, 1, 1, 1, -10000, 10000 );
+	shader = new THREE.ShaderMaterial( {
+		uniforms: {
+			tInput: { type: 't', value: texture },
+			value: { type: 'fv1', value: [] },
+			size: { type: 'f', value: s }
+		},
+		vertexShader: document.getElementById( 'vertexShader' ).textContent, 
+		fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
+		transparent: true
+	} );
+
+	//var str = '041545888825153339539458061047439332662015578320737680762791245123903987255079370676';
+	//var str = '415458888251533395394580610474393326620155783207376807627912451239039872550793706762';
+	//var str = '476127428229791155273188571825390991659994564941601031493710811995112065617425975234';
+	var str = '000003399960000003495999940001275959999710395959599999936959595999999618595959999981'
+	shader.uniforms.value.value = ( str ).split( '' );
+	
+	quad = new THREE.Mesh( new THREE.PlaneGeometry( 1, 1 ), shader );
+	scene.add( quad );
+
+	onResize();
+	window.addEventListener( 'resize', onResize );
+
+	document.body.appendChild( renderer.domElement );
+
+	console.time( 'process' );
+	fetchBuffer();
+
+}
+
+function onResize() {
+
+	var w = s,
+	 	h = s;
+	renderer.setSize( w, h );
+	camera.projectionMatrix.makeOrthographic( w / - 2, w / 2, h / 2, h / - 2, camera.near, camera.far );
+	quad.scale.set( s, s, 1 );
+
+}
+</script>
